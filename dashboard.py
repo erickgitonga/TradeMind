@@ -3,9 +3,6 @@ import pandas as pd
 import plotly.express as px
 from modules.data_manager import load_data_from_csv
 from modules.db_manager import load_signals_from_db
-
-
-
 from modules.signal_generator import add_indicators
 from modules.strategy_engine import combined_strategy
 from modules.backtester import backtest

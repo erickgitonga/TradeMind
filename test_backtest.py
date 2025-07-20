@@ -1,51 +1,71 @@
-from modules.data_manager import load_data_from_csv
-from modules.signal_generator import add_indicators
-from modules.strategy_engine import combined_strategy
-from modules.backtester import backtest
+# test_backtest.py
 
+import pandas as pd
 import matplotlib.pyplot as plt
+from modules.signal_generator import add_indicators, generate_signal
 
-# Load and prepare data
-df = load_data_from_csv('data/btc_15min.csv')
+# Load your historical data (CSV or from DB)
+df = pd.read_csv("data/btc_15min.csv")  # Replace with your actual source
+
+# Add indicators and signals
 df = add_indicators(df)
+df['Signal'] = df.apply(generate_signal, axis=1)
 
-# Run backtest
-results = backtest(df, combined_strategy)
+# Backtesting setup
+initial_balance = 1000
+balance = initial_balance
+in_position = False
+entry_price = 0
+position_size = 1  # Assume 1 unit per trade
+wins = 0
+losses = 0
+trade_log = []
 
-print("📊 Recent Backtest Results:")
-for trade in results[-5:]:
-    print(trade)
+for i, row in df.iterrows():
+    signal = row['Signal']
+    price = row['Close']
 
-# Summary Stats
-if results:
-    wins = sum(1 for t in results if t['PnL'] > 0)
-    losses = sum(1 for t in results if t['PnL'] < 0)
-    total = len(results)
-    final_balance = results[-1]['Balance']
-    total_pnl = sum(t['PnL'] for t in results)
+    if signal == 'BUY' and not in_position:
+        entry_price = price
+        in_position = True
+        trade_log.append({'Type': 'BUY', 'Price': price, 'Time': i})
 
-    print("\n📈 Backtest Summary:")
-    print(f"Total Trades: {total}")
-    print(f"Wins: {wins} ({(wins / total) * 100:.2f}%)")
-    print(f"Losses: {losses} ({(losses / total) * 100:.2f}%)")
-    print(f"Final Balance: ${final_balance:.2f}")
-    print(f"Total PnL: ${total_pnl:.2f}")
-else:
-    print("❌ No trades executed.")
+    elif signal == 'SELL' and in_position:
+        pnl = (price - entry_price) * position_size
+        balance += pnl
+        result = 'WIN' if pnl > 0 else 'LOSS'
+        if pnl > 0:
+            wins += 1
+        else:
+            losses += 1
+        trade_log.append({
+            'Type': 'SELL', 'Price': price, 'Time': i,
+            'PnL': pnl, 'Result': result
+        })
+        in_position = False
 
-# Optional: Plot Equity Curve
-try:
-    equity = [t['Balance'] for t in results]
-    dates = [t['Date'] for t in results]
+# Summary
+total_trades = wins + losses
+win_rate = (wins / total_trades) * 100 if total_trades > 0 else 0
+total_pnl = balance - initial_balance
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(dates, equity, label='Equity Curve', color='green')
-    plt.title("📈 Equity Curve")
-    plt.xlabel("Date")
-    plt.ylabel("Balance ($)")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-except Exception as e:
-    print(f"⚠️ Couldn't plot equity curve: {e}")
+print("📈 Backtest Summary:")
+print(f"Total Trades: {total_trades}")
+print(f"Wins: {wins} ({win_rate:.2f}%)")
+print(f"Losses: {losses} ({100 - win_rate:.2f}%)")
+print(f"Final Balance: ${balance:.2f}")
+print(f"Total PnL: ${total_pnl:.2f}")
+
+# Optional: plot signal entries on price chart
+plt.figure(figsize=(12, 6))
+plt.plot(df['Close'], label='Close Price')
+buy_signals = df[df['Signal'] == 'BUY']
+sell_signals = df[df['Signal'] == 'SELL']
+plt.scatter(buy_signals.index, buy_signals['Close'], marker='^', color='green', label='Buy Signal')
+plt.scatter(sell_signals.index, sell_signals['Close'], marker='v', color='red', label='Sell Signal')
+plt.title("📈 TradeMind Signal Chart")
+plt.xlabel("Time")
+plt.ylabel("Price")
+plt.legend()
+plt.tight_layout()
+plt.show()
